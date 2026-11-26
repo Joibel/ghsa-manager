@@ -1,0 +1,37 @@
+# Git hooks: `lefthook install` once per clone. Adapted from todaydeck's
+# lefthook.yml (itself from steadystate-mono's). The nix dev shell (flake.nix,
+# via direnv or `nix develop`) provides every tool; each command skips when its
+# tool isn't on PATH. This repo has no CI, so the hooks are the only gate.
+
+pre-commit:
+  parallel: true
+  commands:
+    go-lint:
+      glob: "{*.go,**/*.go,go.mod,go.sum,.golangci.yaml}"
+      skip:
+        - run: "! command -v golangci-lint >/dev/null"
+      run: make lint
+    # go.mod's go directive must match the toolchain (flake.lock).
+    go-pin-check:
+      glob: "{go.mod,flake.lock,flake.nix}"
+      skip:
+        - run: "! command -v go >/dev/null"
+      run: make go-pin-check
+    # Scans staged content, not history.
+    gitleaks:
+      skip:
+        - run: "! command -v gitleaks >/dev/null"
+      run: gitleaks git --staged --redact --no-banner -v
+
+pre-push:
+  commands:
+    go-test:
+      skip:
+        - run: "! command -v go >/dev/null"
+      run: make test
+
+# Conventional Commits. Types are in commitlint.config.js.
+commit-msg:
+  commands:
+    commitlint:
+      run: npx --yes --package=@commitlint/cli --package=@commitlint/config-conventional commitlint --edit {1}
