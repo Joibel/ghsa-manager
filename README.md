@@ -12,7 +12,8 @@ advisories**. For every draft advisory, it shows:
 
 Mark advisories for CI and ghsa-manager runs their fix PRs through the mirror's
 shared `ghsa-ci.sh`, a few runs at a time. It then posts the results as one
-comment on the advisory, edited in place on later runs.
+comment on the advisory, edited in place on later runs. For CI started some
+other way, `R` posts the advisory's current results without re-running them.
 
 ## Setup
 
@@ -36,7 +37,7 @@ ghsa-manager status     # print once and exit
 ```
 
 Keys: `c` mark for CI · `u` unmark · `t`/`b` send to the top or bottom of the
-queue · `x` clear stuck runs · `enter` open the advisory · `p` open the PR ·
+queue · `x` clear stuck runs · `R` post the current CI results now (no re-run) · `enter` open the advisory · `p` open the PR ·
 `f` make a fork · `r` refresh · `q` quit.
 
 ## Development

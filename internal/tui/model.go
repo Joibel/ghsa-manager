@@ -211,7 +211,7 @@ func (m Model) afterRefresh() (Model, tea.Cmd) {
 	}
 	cmds := make([]tea.Cmd, 0, len(toReport)+1)
 	for _, id := range toReport {
-		cmds = append(cmds, m.report(id))
+		cmds = append(cmds, m.report(id, true))
 	}
 	cmds = append(cmds, m.schedule())
 	return m, tea.Batch(cmds...)
@@ -219,7 +219,9 @@ func (m Model) afterRefresh() (Model, tea.Cmd) {
 
 // report posts an advisory's CI-status comment, then unmarks it. The network
 // call runs on a copy of the state, outside the state lock.
-func (m Model) report(id string) tea.Cmd {
+// report posts id's CI results on the advisory. unmark drops it from the queue
+// afterwards, for a queued advisory whose runs have all finished.
+func (m Model) report(id string, unmark bool) tea.Cmd {
 	a, ok := m.advisory(id)
 	if !ok {
 		return nil
@@ -242,7 +244,9 @@ func (m Model) report(id string) tea.Cmd {
 				if cid, ok := local.CommentIDs[id]; ok {
 					s.CommentIDs[id] = cid
 				}
-				queue.Unmark(s, id)
+				if unmark {
+					queue.Unmark(s, id)
+				}
 				return nil
 			})
 		}

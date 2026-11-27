@@ -3,14 +3,16 @@ package tui
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/Joibel/ghsa-manager/internal/model"
 	"github.com/Joibel/ghsa-manager/internal/queue"
 	"github.com/Joibel/ghsa-manager/internal/state"
 )
 
-const help = "c mark for CI · u unmark · t/b send to top/bottom of queue · x clear stuck runs · enter open advisory · p open PR · f make fork · r refresh · q quit"
+const help = "c mark for CI · u unmark · t/b send to top/bottom of queue · x clear stuck runs · R report CI now · enter open advisory · p open PR · f make fork · r refresh · q quit"
 
 func (m Model) key(msg tea.KeyMsg) (Model, tea.Cmd) {
 	if m.confirmFork != "" {
@@ -44,6 +46,8 @@ func (m Model) action(k string, sel row) (Model, tea.Cmd) {
 		m.updateState(func(s *state.State) error { queue.ToTop(s, sel.adv.ID); return nil })
 	case "b":
 		m.updateState(func(s *state.State) error { queue.ToBottom(s, sel.adv.ID); return nil })
+	case "R":
+		return m.reportNow(sel)
 	case "x":
 		m.updateState(func(s *state.State) error { queue.ClearFlights(s, sel.adv.ID); return nil })
 		m.note(sel.adv.ID + ": forgot its in-flight runs")
@@ -72,6 +76,17 @@ func (m Model) mark(sel row) (Model, tea.Cmd) {
 	}
 	// Starts wait for a fresh in-flight count.
 	return m, m.fetch()
+}
+
+// reportNow posts the advisory's current CI results without running anything,
+// for CI started outside the tool. It needs at least one PR with a run.
+func (m Model) reportNow(sel row) (Model, tea.Cmd) {
+	if !slices.ContainsFunc(sel.adv.PRs, func(p model.FixPR) bool { return p.CI.State != model.CINever }) {
+		m.note(sel.adv.ID + ": no CI has run yet, so nothing to report")
+		return m, nil
+	}
+	m.note(sel.adv.ID + ": reporting CI on the advisory")
+	return m, m.report(sel.adv.ID, false)
 }
 
 func (m *Model) open(url string) {

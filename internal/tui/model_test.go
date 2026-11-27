@@ -401,3 +401,42 @@ func TestOpenAdvisoryAndPR(t *testing.T) {
 	key(m, "p")
 	assert.Equal(t, []string{"https://adv/a", "https://pr/a1"}, f.opened)
 }
+
+// R posts the selected advisory's current CI results straight away, without
+// re-running anything or touching the queue.
+func TestReportNowPostsCurrentResults(t *testing.T) {
+	f := &fakes{snap: snapshot(), inFlight: 3}
+	m := load(t, newModel(t, f), f)
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("R")}) // cursor on GHSA-aaaa, which has runs
+	flatten(cmd)
+	assert.Equal(t, []string{idA}, f.reported)
+	assert.Empty(t, f.runs)
+	assert.Empty(t, f.reruns)
+	assert.Empty(t, queueOf(t, m))
+}
+
+func TestReportNowNeedsARun(t *testing.T) {
+	snap := snapshot()
+	snap.Advisories[1].PRs[0].CI = model.CI{} // GHSA-dddd: never run
+	f := &fakes{snap: snap, inFlight: 3}
+	m := load(t, newModel(t, f), f)
+	for range 4 {
+		m = key(m, "down")
+	}
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("R")})
+	m = asModel(t, next)
+	flatten(cmd)
+	assert.Empty(t, f.reported)
+	assert.Contains(t, m.View(), "no CI has run yet")
+}
+
+// R on a queued advisory reports but leaves it queued.
+func TestReportNowKeepsTheQueue(t *testing.T) {
+	f := &fakes{snap: snapshot(), inFlight: 3}
+	m := load(t, newModel(t, f), f)
+	m = key(m, "c")
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("R")})
+	flatten(cmd)
+	assert.Equal(t, []string{idA}, f.reported)
+	assert.NotEmpty(t, queueOf(t, m))
+}
