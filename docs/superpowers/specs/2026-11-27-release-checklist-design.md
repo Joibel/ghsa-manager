@@ -9,7 +9,9 @@ can be published. Alan currently keeps track of that work in his head:
 - a correct description;
 - a CVSS score;
 - a CVE requested;
-- correct affected versions.
+- correct affected versions;
+- correct credits (finder, analyst, fixer and so on). *(Alan, added after the
+  first draft)*
 
 None of these is hard. Some are mechanical, like the affected versions, and
 some are judgement calls. The goal is to keep them in the tool, so the
@@ -30,12 +32,17 @@ document still applies unless this one changes it.
   - `cvss` / `cvss_severities` (vector and score);
   - `cve_id`;
   - `vulnerabilities[]`, each with `package`, `vulnerable_version_range`
-    (for example `>= 4.0.0, < 4.0.7` or `< 3.7.0`) and `patched_versions`.
+    (for example `>= 4.0.0, < 4.0.7` or `< 3.7.0`) and `patched_versions`;
+  - `credits_detailed[]`, each with `user`, `type` and `state`. The types
+    include `finder`, `reporter`, `analyst`, `coordinator`,
+    `remediation_developer`, `remediation_reviewer`, `remediation_verifier`,
+    `tool`, `sponsor` and `other`. The state is `accepted`, `declined` or
+    `pending`.
 
   go-github's `SecurityAdvisory` type already has all of these.
 - **Editing an advisory:** `PATCH /repos/{owner}/{repo}/security-advisories/{ghsa_id}`
   changes the summary, description, severity, CVSS vector, CWEs, CVE ID and
-  vulnerabilities. go-github doesn't wrap it, but `gh api` can call it.
+  vulnerabilities and credits. go-github doesn't wrap it, but `gh api` can call it.
 - **Requesting a CVE:** `POST …/security-advisories/{ghsa_id}/cve` (go-github
   `RequestCVE`). The API has **no field for a CVE that has been requested but
   not yet assigned**. `cve_id` stays null until GitHub assigns one. The tool
@@ -56,7 +63,7 @@ document still applies unless this one changes it.
 
 ## Goals
 
-1. **Five checklist items per draft advisory:**
+1. **Six checklist items per draft advisory:**
    - **PRs to branches:** each expected branch has an open fix PR. Ticked by
      the tool.
    - **Description:** ticked by Alan. *(Alan: judgement call)*
@@ -68,13 +75,15 @@ document still applies unless this one changes it.
      *(Alan)*
    - **Affected versions:** the screen shows the ranges and patched versions
      once set, but they count only when Alan ticks them. *(Alan)*
+   - **Credits:** everyone who found, analysed, fixed or reviewed the issue is
+     credited with the right type. Ticked by Alan. *(Alan)*
 
    The tool ticks only what it can check for certain. *(Alan)*
-2. **Main screen:** a new short column on each advisory row, `n/5`, green at
-   5/5. Nothing else on the main screen changes. *(Alan: layout C, so the main
+2. **Main screen:** a new short column on each advisory row, `n/6`, green at
+   6/6. Nothing else on the main screen changes. *(Alan: layout C, so the main
    screen stays short)*
 3. **Status word:** an advisory that would be **ready** shows
-   **checklist n/5** until all five items are done. The earlier status words
+   **checklist n/6** until all six items are done. The earlier status words
    (no fork, needs CI, needs review) come first, unchanged.
 4. **Checklist screen:** `l` on an advisory opens a screen with one line per
    item, showing what's done and the detail behind each item:
@@ -84,6 +93,8 @@ document still applies unless this one changes it.
    - *CVE:* the CVE ID, "requested <date>", or "not requested".
    - *Affected versions:* each vulnerable range and its patched version, and
      whether it's ticked.
+   - *Credits:* each credited user with their type and state, whether it's
+     ticked, and hints for people who look missing (see Claude's calls).
 
    Its keys:
    - `space` ticks or unticks the item under the cursor;
@@ -102,7 +113,7 @@ document still applies unless this one changes it.
    The session helps with the checklist. Once Alan agrees in the chat, it can
    change the advisory on GitHub through the PATCH API. *(Alan: "if there is an
    API, it can change it")*
-6. **`ghsa-manager status`** prints the `n/5` count too.
+6. **`ghsa-manager status`** prints the `n/6` count too.
 
 ## Non-goals
 
@@ -111,7 +122,7 @@ document still applies unless this one changes it.
   decides that.
 - The session working unattended or reporting back by itself. It's
   interactive, with Alan in it. *(Alan)*
-- Checklist items beyond these five. They can be added later.
+- Checklist items beyond these six. They can be added later.
 
 ## Anti-goals
 
@@ -172,7 +183,7 @@ document still applies unless this one changes it.
     They don't count towards N. "The newest N" means the newest N branches
     that have a GA release.
 - **Waivers:** `space` on an item the tool checks waives it. A waived item
-  shows as "waived", not "done", but counts towards n/5. `space` again
+  shows as "waived", not "done", but counts towards n/6. `space` again
   removes the waiver.
   - For *PRs to branches*, waivers are **per branch**. Each expected branch
     gets its own line on the checklist screen for the cursor, and `space` on
@@ -180,13 +191,20 @@ document still applies unless this one changes it.
     expected branch has a PR or a waiver. A branch that becomes expected later
     shows as missing. It isn't covered by an earlier waiver.
   - The CVE item can't be waived. `space` on it marks it requested.
-- **Ticks go stale:** a tick on CVSS or affected versions records a hash of
-  the value Alan ticked. If the value changes, the item shows "ticked
+- **Ticks go stale:** a tick on CVSS, affected versions or credits records a
+  hash of the value Alan ticked. For credits, the hash covers each user and
+  type, not the state, so a credit being accepted doesn't unset the tick. If the value changes, the item shows "ticked
   (changed since)" and stops counting, the way approvals go stale. A
   description tick doesn't go stale, because descriptions get small wording
   edits. Only hashes go in the state file, never the text.
-- **Ticking an empty item:** you can't tick CVSS or affected versions while
-  they're not set. You can waive them.
+- **Ticking an empty item:** you can't tick CVSS, affected versions or
+  credits while they're not set. You can waive them.
+- **Credit hints:** the checklist screen lists people who look like they
+  should be credited but aren't, as hints. These are the authors of the fix
+  PRs (as `remediation_developer`) and anyone who approved one
+  (`remediation_reviewer`). The hints never tick or block the item, and
+  they're only shown on the checklist screen. A credit that is `declined`
+  shows as declined.
 - **Recording CVE requests:** add a `ghsa-manager request-cve <GHSA>`
   subcommand. It calls the API and records the request in local state. The
   checklist screen's CVE key uses the same code. The session is told to use
