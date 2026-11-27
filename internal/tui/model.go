@@ -31,17 +31,20 @@ const (
 // Deps is everything the screen does outside itself. cmd wires the real
 // GitHub, runner and reporter; tests pass fakes.
 type Deps struct {
-	Fetch     func(ctx context.Context, recordedBases map[string]model.RecordedBase) source.Snapshot
-	InFlight  func(ctx context.Context) (int, error)
-	Run       func(ctx context.Context, ghsa string, prs []int) ([]runner.Result, error)
-	Rerun     func(ctx context.Context, runID int64) error
-	Report    func(ctx context.Context, s *state.State, a model.Advisory) error
-	MakeFork  func(ctx context.Context, ghsa string) error
-	Open      func(url string) error
-	Now       func() time.Time
-	StatePath string
-	Refresh   time.Duration
-	MaxRuns   int
+	Fetch    func(ctx context.Context, recordedBases map[string]model.RecordedBase) source.Snapshot
+	InFlight func(ctx context.Context) (int, error)
+	Run      func(ctx context.Context, ghsa string, prs []int) ([]runner.Result, error)
+	Rerun    func(ctx context.Context, runID int64) error
+	Report   func(ctx context.Context, s *state.State, a model.Advisory) error
+	MakeFork func(ctx context.Context, ghsa string) error
+	// RequestCVE asks GitHub for a CVE and records the request in the state
+	// file. Its error names the advisory.
+	RequestCVE func(ctx context.Context, ghsa string) error
+	Open       func(url string) error
+	Now        func() time.Time
+	StatePath  string
+	Refresh    time.Duration
+	MaxRuns    int
 	// Supported is how many supported release branches the checklist expects.
 	Supported int
 }
@@ -57,13 +60,20 @@ type Model struct {
 	err         string
 	// selID and selPR are the selected row: an advisory, and its PR index or -1.
 	// The cursor follows them when rows re-sort.
-	selID          string
+	selID string
+	// listID is the advisory on the checklist screen; "" means the main
+	// screen. listCursor is the checklist line selected.
+	listID         string
 	notes          []string
 	deps           Deps
 	selPR          int
+	listCursor     int
 	mirrorInFlight int
 	// width is the terminal's, for trimming titles; 0 until known.
 	width int
+	// confirmCVE is true while the checklist screen asks before requesting a
+	// CVE for listID.
+	confirmCVE bool
 }
 
 // flight is a CI run re-run or adopted without ghsa-ci.sh.
@@ -148,6 +158,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.snap, m.mirrorInFlight, m.countedAt = msg.snap, msg.inFlight, msg.countedAt
 		if rows := m.rows(); m.selID == "" && len(rows) > 0 {
 			m.selID, m.selPR = rows[0].adv.ID, rows[0].pr
+		}
+		if _, ok := m.advisory(m.listID); m.listID != "" && !ok {
+			m.note(m.listID + " is no longer a draft")
+			m.listID, m.confirmCVE = "", false
 		}
 		return m.afterRefresh()
 	case tea.WindowSizeMsg:

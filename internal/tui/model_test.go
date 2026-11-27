@@ -23,6 +23,8 @@ const (
 	old = "0000000000000000000000000000000000000000"
 	idA = "GHSA-aaaa-bbbb-cccc"
 	idD = "GHSA-dddd-eeee-ffff"
+
+	cvssA = "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N"
 )
 
 func now() time.Time { return time.Date(2026, 11, 26, 14, 0, 0, 0, time.UTC) }
@@ -31,22 +33,36 @@ func snapshot() source.Snapshot {
 	green := model.CI{State: model.CIGreen, RunHeadSHA: h1, FinishedAt: now().Add(-2 * time.Hour)}
 	red := model.CI{State: model.CIRed, RunHeadSHA: h1, FinishedAt: now().Add(-time.Hour)}
 	return source.Snapshot{FetchedAt: now(), Advisories: []model.Advisory{
-		{ID: idA, Fork: "o/a", URL: "https://adv/a", Summary: "Workflow archive lookup crosses namespaces", PRs: []model.FixPR{
-			{Number: 1, Base: "main", HeadSHA: h1, CI: red, URL: "https://pr/a1", Author: "mallory-fixer"},
-			{Number: 2, Base: "release-4.1", HeadSHA: h1, CI: green, URL: "https://pr/a2",
-				Reviews: []model.Review{{User: "alice", State: "APPROVED", CommitID: old}}},
-			{Number: 3, Base: "release-4.0", HeadSHA: h1, URL: "https://pr/a3"},
-		}},
+		{ID: idA, Fork: "o/a", URL: "https://adv/a", Summary: "Workflow archive lookup crosses namespaces",
+			Description: "Any user can read another namespace's archived workflows.",
+			CVSSVector:  cvssA, CVSSScore: 6.5,
+			Vulns: []model.Vulnerability{
+				{Package: "github.com/argoproj/argo-workflows/v4", Range: ">= 4.0.0, < 4.0.7", Patched: "4.0.7"},
+				{Package: "github.com/argoproj/argo-workflows/v4", Range: ">= 4.1.0, < 4.1.3", Patched: "4.1.3"},
+			},
+			Credits: []model.Credit{{User: "eve-finder", Type: "finder", State: "accepted"}},
+			PRs: []model.FixPR{
+				{Number: 1, Base: "main", HeadSHA: h1, CI: red, URL: "https://pr/a1", Author: "mallory-fixer"},
+				{Number: 2, Base: "release-4.1", HeadSHA: h1, CI: green, URL: "https://pr/a2",
+					Reviews: []model.Review{{User: "alice", State: "APPROVED", CommitID: old}}},
+				{Number: 3, Base: "release-4.0", HeadSHA: h1, URL: "https://pr/a3"},
+			}},
 		{ID: idD, Fork: "o/d", URL: "https://adv/d", PRs: []model.FixPR{
 			{Number: 1, Base: "main", HeadSHA: h1, CI: red},
 		}},
 		{ID: "GHSA-gggg-hhhh-iiii", URL: "https://adv/g", Summary: strings.Repeat("very long title ", 20)},
+	}, Releases: []model.ReleaseBranch{
+		// release-4.2 has only an RC, so it's always expected.
+		{Name: "release-4.2", Major: 4, Minor: 2},
+		{Name: "release-4.1", Major: 4, Minor: 1, GA: true},
+		{Name: "release-4.0", Major: 4, Minor: 0, GA: true},
 	}}
 }
 
 type fakes struct {
 	statePath   string
 	runErr      error
+	cveErr      error
 	snap        source.Snapshot
 	runs        [][]int
 	runResult   []runner.Result
@@ -54,6 +70,7 @@ type fakes struct {
 	forks       []string
 	reported    []string
 	reruns      []int64
+	cves        []string
 	inFlight    int
 	lockedInRep bool
 }
@@ -83,11 +100,16 @@ func newModel(t *testing.T, f *fakes) Model {
 			}
 			return nil
 		},
-		Rerun:     func(_ context.Context, runID int64) error { f.reruns = append(f.reruns, runID); return nil },
-		MakeFork:  func(_ context.Context, id string) error { f.forks = append(f.forks, id); return nil },
-		Open:      func(url string) error { f.opened = append(f.opened, url); return nil },
+		Rerun:    func(_ context.Context, runID int64) error { f.reruns = append(f.reruns, runID); return nil },
+		MakeFork: func(_ context.Context, id string) error { f.forks = append(f.forks, id); return nil },
+		Open:     func(url string) error { f.opened = append(f.opened, url); return nil },
+		RequestCVE: func(_ context.Context, ghsa string) error {
+			f.cves = append(f.cves, ghsa)
+			return f.cveErr
+		},
 		StatePath: f.statePath,
 		MaxRuns:   3,
+		Supported: 2,
 		Now:       now,
 	})
 }
@@ -151,6 +173,10 @@ func key(m Model, k string) Model {
 		msg = tea.KeyMsg{Type: tea.KeyDown}
 	case "enter":
 		msg = tea.KeyMsg{Type: tea.KeyEnter}
+	case "esc":
+		msg = tea.KeyMsg{Type: tea.KeyEsc}
+	case "space":
+		msg = tea.KeyMsg{Type: tea.KeySpace, Runes: []rune(" ")}
 	default:
 		msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)}
 	}

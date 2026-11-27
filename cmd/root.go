@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Joibel/ghsa-manager/internal/config"
+	"github.com/Joibel/ghsa-manager/internal/cve"
 	"github.com/Joibel/ghsa-manager/internal/gh"
 	"github.com/Joibel/ghsa-manager/internal/mirror"
 	"github.com/Joibel/ghsa-manager/internal/model"
@@ -80,6 +81,7 @@ func deps(c *github.Client, repos gh.Repos, supported, maxRuns int, refresh time
 	facts := mirror.NewFacts(c, nil, repos.Mirror)
 	src := source.New(c, facts, repos)
 	run := runner.Runner{Script: runner.FromMirror(c, repos.Mirror)}
+	statePath := state.Path(repos.Upstream.String())
 	return tui.Deps{
 		Fetch:    src.Fetch,
 		InFlight: facts.InFlight,
@@ -99,13 +101,16 @@ func deps(c *github.Client, repos gh.Repos, supported, maxRuns int, refresh time
 			}
 			return nil
 		},
+		RequestCVE: func(ctx context.Context, ghsa string) error {
+			return cve.Request(ctx, c, repos.Upstream, statePath, ghsa, time.Now())
+		},
 		Open: func(url string) error {
 			if err := exec.Command("xdg-open", url).Start(); err != nil { //nolint:gosec,noctx // opens a GitHub URL in the browser; outlives the request
 				return fmt.Errorf("xdg-open: %w", err)
 			}
 			return nil
 		},
-		StatePath: state.Path(repos.Upstream.String()),
+		StatePath: statePath,
 		MaxRuns:   maxRuns,
 		Supported: supported,
 		Refresh:   refresh,

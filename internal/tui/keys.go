@@ -12,11 +12,16 @@ import (
 	"github.com/Joibel/ghsa-manager/internal/state"
 )
 
-const help = "c mark for CI · u unmark · t/b send to top/bottom of queue · x clear stuck runs · R report CI now · enter open advisory · p open PR · f make fork · r refresh · q quit"
+const help = "c mark for CI · u unmark · t/b send to top/bottom of queue · x clear stuck runs · R report CI now · l checklist · enter open advisory · p open PR · f make fork · r refresh · q quit"
 
 func (m Model) key(msg tea.KeyMsg) (Model, tea.Cmd) {
-	if m.confirmFork != "" {
+	switch {
+	case m.confirmFork != "":
 		return m.confirm(msg)
+	case m.confirmCVE:
+		return m.confirmCVERequest(msg)
+	case m.listID != "":
+		return m.listKey(msg)
 	}
 	switch msg.String() {
 	case "q", "ctrl+c":
@@ -61,6 +66,8 @@ func (m Model) action(k string, sel row) (Model, tea.Cmd) {
 		if sel.adv.Fork == "" {
 			m.confirmFork = sel.adv.ID
 		}
+	case "l":
+		m.listID, m.listCursor = sel.adv.ID, 0
 	}
 	return m, nil
 }

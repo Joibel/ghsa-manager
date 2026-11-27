@@ -41,7 +41,7 @@ func statusStyle(st styles, s model.Status) lipgloss.Style {
 	return st.dim
 }
 
-// View renders layout A and the footer.
+// View renders layout A, or an advisory's checklist screen, and the footer.
 func (m Model) View() string {
 	st := newStyles()
 	s := m.loadState()
@@ -51,6 +51,11 @@ func (m Model) View() string {
 	}
 	lists := render.Checklists(m.snap, s.Checks, m.deps.Supported)
 	var b strings.Builder
+	if a, ok := m.advisory(m.listID); ok {
+		b.WriteString(m.checklistView(st, a, lists[a.ID], s.Checks[a.ID]))
+		b.WriteString("\n" + m.footer(s) + "\n")
+		return b.String()
+	}
 	b.WriteString(st.header.Render(fmt.Sprintf(" %-2s %-20s %-14s %-4s %-12s %-4s %-15s %-30s %s",
 		"Q", "GHSA", "STATE", "REL", "BRANCH", "PR", "AUTHOR", "CI", "REVIEWS")) + "\n")
 	rows := m.rows()
@@ -149,9 +154,14 @@ func (m Model) footer(s *state.State) string {
 	for _, n := range m.notes {
 		lines = append(lines, " "+n)
 	}
-	if m.confirmFork != "" {
+	switch {
+	case m.confirmFork != "":
 		lines = append(lines, " make a fork for "+m.confirmFork+"? y/n")
-	} else {
+	case m.confirmCVE:
+		lines = append(lines, " request a CVE for "+m.listID+"? y/n")
+	case m.listID != "":
+		lines = append(lines, " "+checklistHelp)
+	default:
 		lines = append(lines, " "+help)
 	}
 	return strings.Join(lines, "\n")
