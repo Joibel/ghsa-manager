@@ -106,6 +106,31 @@ type FixPR struct {
 	Number     int
 }
 
+// Vulnerability is one entry of an advisory's affected packages.
+type Vulnerability struct {
+	Package string
+	Range   string
+	// Patched is patched_versions, or first_patched_version.identifier when
+	// that's empty.
+	Patched string
+}
+
+// Credit is one person credited on an advisory.
+type Credit struct {
+	User  string
+	Type  string
+	State string
+}
+
+// ReleaseBranch is an upstream release-X.Y branch.
+type ReleaseBranch struct {
+	Name  string
+	Major int
+	Minor int
+	// GA is true when a vX.Y.0 tag exists.
+	GA bool
+}
+
 // Advisory is a draft security advisory and its fork's fix PRs.
 type Advisory struct {
 	// CreatedAt orders the screen: oldest advisory first.
@@ -116,6 +141,13 @@ type Advisory struct {
 	// Fork is the temporary private fork's full name; "" when there is none.
 	Fork string
 	PRs  []FixPR
+	// Description is the advisory's body text.
+	Description string
+	CVSSVector  string
+	CVEID       string
+	Vulns       []Vulnerability
+	Credits     []Credit
+	CVSSScore   float64
 }
 
 // shaMatch reports whether two SHAs name the same commit, allowing either to be

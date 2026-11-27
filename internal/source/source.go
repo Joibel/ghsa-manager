@@ -17,6 +17,7 @@ import (
 	"github.com/Joibel/ghsa-manager/internal/gh"
 	"github.com/Joibel/ghsa-manager/internal/mirror"
 	"github.com/Joibel/ghsa-manager/internal/model"
+	"github.com/Joibel/ghsa-manager/internal/versions"
 )
 
 // fetchConcurrency bounds how many advisories are fetched at once.
@@ -28,6 +29,8 @@ type Snapshot struct {
 	FetchedAt  time.Time
 	Err        error
 	Advisories []model.Advisory
+	// Releases are the upstream's release branches, newest first.
+	Releases []model.ReleaseBranch
 }
 
 // Source fetches snapshots.
@@ -45,22 +48,28 @@ func New(c *github.Client, facts *mirror.Facts, repos gh.Repos) *Source {
 // Fetch reads every draft advisory. recordedBases maps a mirror branch to the
 // base the tool triggered its latest run against.
 func (s *Source) Fetch(ctx context.Context, recordedBases map[string]model.RecordedBase) Snapshot {
-	advs, err := s.fetchAll(ctx, recordedBases)
+	advs, rels, err := s.fetchAll(ctx, recordedBases)
 	if err != nil {
 		return Snapshot{FetchedAt: time.Now(), Err: err}
 	}
-	return Snapshot{FetchedAt: time.Now(), Advisories: advs}
+	return Snapshot{FetchedAt: time.Now(), Advisories: advs, Releases: rels}
 }
 
-func (s *Source) fetchAll(ctx context.Context, recordedBases map[string]model.RecordedBase) ([]model.Advisory, error) {
+func (s *Source) fetchAll(ctx context.Context, recordedBases map[string]model.RecordedBase) ([]model.Advisory, []model.ReleaseBranch, error) {
 	drafts, err := s.drafts(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	bases := &baseCache{s: s, tips: make(map[string]string)}
 	advs := make([]model.Advisory, len(drafts))
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(fetchConcurrency)
+	var rels []model.ReleaseBranch
+	g.Go(func() error {
+		var err error
+		rels, err = s.releases(gctx)
+		return err
+	})
 	for i, d := range drafts {
 		g.Go(func() error {
 			a, err := s.advisory(gctx, d, recordedBases, bases)
@@ -69,7 +78,7 @@ func (s *Source) fetchAll(ctx context.Context, recordedBases map[string]model.Re
 		})
 	}
 	if err := g.Wait(); err != nil {
-		return nil, err //nolint:wrapcheck // errors from advisory() are already wrapped
+		return nil, nil, err //nolint:wrapcheck // errors from advisory() and releases() are already wrapped
 	}
 	// Oldest first, so rows never move as advisories are marked or worked on.
 	sort.Slice(advs, func(i, j int) bool {
@@ -78,7 +87,7 @@ func (s *Source) fetchAll(ctx context.Context, recordedBases map[string]model.Re
 		}
 		return advs[i].ID < advs[j].ID
 	})
-	return advs, nil
+	return advs, rels, nil
 }
 
 func (s *Source) drafts(ctx context.Context) ([]*github.SecurityAdvisory, error) {
@@ -101,7 +110,20 @@ func (s *Source) drafts(ctx context.Context) ([]*github.SecurityAdvisory, error)
 func (s *Source) advisory(ctx context.Context, d *github.SecurityAdvisory, recordedBases map[string]model.RecordedBase, bases *baseCache) (model.Advisory, error) {
 	a := model.Advisory{
 		ID: model.NormalizeID(d.GetGHSAID()), Summary: d.GetSummary(), URL: d.GetHTMLURL(),
-		CreatedAt: d.GetCreatedAt().Time,
+		CreatedAt: d.GetCreatedAt().Time, Description: d.GetDescription(), CVEID: d.GetCVEID(),
+	}
+	a.CVSSVector, a.CVSSScore = cvss(d)
+	for _, v := range d.Vulnerabilities {
+		patched := v.GetPatchedVersions()
+		if patched == "" {
+			patched = v.GetFirstPatchedVersion().GetIdentifier()
+		}
+		a.Vulns = append(a.Vulns, model.Vulnerability{
+			Package: v.GetPackage().GetName(), Range: v.GetVulnerableVersionRange(), Patched: patched,
+		})
+	}
+	for _, c := range d.CreditsDetailed {
+		a.Credits = append(a.Credits, model.Credit{User: c.GetUser().GetLogin(), Type: c.GetType(), State: c.GetState()})
 	}
 	if d.PrivateFork == nil {
 		return a, nil
@@ -126,6 +148,58 @@ func (s *Source) advisory(ctx context.Context, d *github.SecurityAdvisory, recor
 	}
 	sort.Slice(a.PRs, func(i, j int) bool { return branchOrder(a.PRs[i].Base) < branchOrder(a.PRs[j].Base) })
 	return a, nil
+}
+
+// cvss returns the advisory's vector and score: CVSS v4, then v3, then the
+// legacy field, whichever first has a vector.
+func cvss(d *github.SecurityAdvisory) (string, float64) {
+	cands := []*github.AdvisoryCVSS{d.CVSS}
+	if sev := d.CVSSSeverities; sev != nil {
+		cands = []*github.AdvisoryCVSS{sev.CVSSV4, sev.CVSSV3, d.CVSS}
+	}
+	for _, c := range cands {
+		if c.GetVectorString() != "" {
+			return c.GetVectorString(), c.GetScore()
+		}
+	}
+	return "", 0
+}
+
+// releases lists the upstream's release-X.Y branches, newest first, marking
+// those with a vX.Y.0 tag as GA. Names that aren't release-X.Y are skipped.
+func (s *Source) releases(ctx context.Context) ([]model.ReleaseBranch, error) {
+	up := s.repos.Upstream
+	branches, _, err := s.c.Git.ListMatchingRefs(ctx, up.Owner, up.Name, "heads/release-")
+	if err != nil {
+		return nil, fmt.Errorf("listing release branches: %w", err)
+	}
+	tags, _, err := s.c.Git.ListMatchingRefs(ctx, up.Owner, up.Name, "tags/v")
+	if err != nil {
+		return nil, fmt.Errorf("listing release tags: %w", err)
+	}
+	have := make(map[string]bool, len(tags))
+	for _, t := range tags {
+		have[strings.TrimPrefix(t.GetRef(), "refs/tags/")] = true
+	}
+	var out []model.ReleaseBranch
+	for _, b := range branches {
+		name := strings.TrimPrefix(b.GetRef(), "refs/heads/")
+		xy := strings.TrimPrefix(name, "release-")
+		v, err := versions.Parse(xy + ".0")
+		if err != nil || strings.Count(xy, ".") != 1 {
+			continue
+		}
+		out = append(out, model.ReleaseBranch{
+			Name: name, Major: v.Major, Minor: v.Minor, GA: have[fmt.Sprintf("v%d.%d.0", v.Major, v.Minor)],
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Major != out[j].Major {
+			return out[i].Major > out[j].Major
+		}
+		return out[i].Minor > out[j].Minor
+	})
+	return out, nil
 }
 
 func (s *Source) fixPR(ctx context.Context, id, owner, repo string, p *github.PullRequest, recordedBases map[string]model.RecordedBase, bases *baseCache) (model.FixPR, error) {
