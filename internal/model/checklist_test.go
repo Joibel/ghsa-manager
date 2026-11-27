@@ -115,6 +115,22 @@ func TestExpectedBranches(t *testing.T) {
 		assert.Equal(t, "no affected versions set", r.Note)
 		assert.Empty(t, r.Expected)
 	})
+
+	t.Run("only blank ranges", func(t *testing.T) {
+		a := withPRs(vulnAdvisory("", " "), "main")
+		r := result(t, Evaluate(a, releases(), 2, Checks{}), ItemBranches)
+		assert.Equal(t, ItemOpen, r.State)
+		assert.Equal(t, "no affected versions set", r.Note)
+		assert.Empty(t, r.Expected)
+	})
+
+	t.Run("a blank range beside a set one", func(t *testing.T) {
+		a := withPRs(vulnAdvisory(">= 4.0.0, < 4.0.7", ""), "main", "release-4.0", "release-4.2")
+		r := result(t, Evaluate(a, releases(), 2, Checks{}), ItemBranches)
+		assert.Equal(t, ItemOpen, r.State)
+		assert.Equal(t, "can't read affected versions", r.Note)
+		assert.Empty(t, r.Expected)
+	})
 }
 
 func TestBranchesDone(t *testing.T) {
@@ -279,6 +295,15 @@ func TestToggle(t *testing.T) {
 			assert.Equal(t, ItemOpen, state(Advisory{}, c, it), it)
 			assert.NotContains(t, c.Waived, string(it), it)
 		}
+	})
+
+	t.Run("versions with only blank ranges are not set", func(t *testing.T) {
+		a := vulnAdvisory("", "")
+		var c Checks
+		assert.Equal(t, "not set", result(t, Evaluate(a, nil, 2, c), ItemVersions).Note)
+		tickAt(&c, a, ItemVersions)
+		assert.Empty(t, c.Ticks)
+		assert.Equal(t, ItemWaived, state(a, c, ItemVersions))
 	})
 
 	t.Run("a set value is never waived", func(t *testing.T) {

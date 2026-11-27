@@ -118,21 +118,20 @@ func Evaluate(a Advisory, rel []ReleaseBranch, supported int, c Checks) Checklis
 
 // expectedBranches returns main, the newest supported GA branches whose minor
 // a range covers, and every branch without a GA release. It returns a note
-// instead when the ranges are missing or can't be read.
+// instead when any range is missing or can't be read: a partial answer could
+// mark the item done while a package's affected versions are still unknown.
 func expectedBranches(a Advisory, rel []ReleaseBranch, supported int) ([]string, string) {
+	if noRanges(a) {
+		return nil, "no affected versions set"
+	}
 	parsed := make([]versions.Range, 0, len(a.Vulns))
 	for _, v := range a.Vulns {
-		if strings.TrimSpace(v.Range) == "" {
-			continue
-		}
+		// A blank range is an error here, beside ranges that are set.
 		r, err := versions.ParseRange(v.Range)
 		if err != nil {
 			return nil, "can't read affected versions"
 		}
 		parsed = append(parsed, r)
-	}
-	if len(parsed) == 0 {
-		return nil, "no affected versions set"
 	}
 	covers := func(b ReleaseBranch) bool {
 		return slices.ContainsFunc(parsed, func(r versions.Range) bool { return r.CoversMinor(b.Major, b.Minor) })
@@ -200,6 +199,11 @@ func prFor(a Advisory, branch string) int {
 	return 0
 }
 
+// noRanges reports whether no vulnerability has a range set.
+func noRanges(a Advisory) bool {
+	return !slices.ContainsFunc(a.Vulns, func(v Vulnerability) bool { return strings.TrimSpace(v.Range) != "" })
+}
+
 // valueEmpty reports whether a ticked item's value is unset.
 func valueEmpty(a Advisory, it Item) bool {
 	switch it {
@@ -208,7 +212,7 @@ func valueEmpty(a Advisory, it Item) bool {
 	case ItemCVSS:
 		return a.CVSSVector == ""
 	case ItemVersions:
-		return len(a.Vulns) == 0
+		return noRanges(a)
 	case ItemCredits:
 		return len(a.Credits) == 0
 	case ItemBranches, ItemCVE:
