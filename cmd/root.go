@@ -60,6 +60,7 @@ The upstream and mirror repositories come from the config file
 	root.PersistentFlags().StringVar(&upstream, "upstream", "", "repository whose draft advisories to track (owner/name)")
 	root.PersistentFlags().StringVar(&mirrorRepo, "mirror", "", "private mirror repository where fix PRs' CI runs (owner/name)")
 	root.AddCommand(NewStatusCmd(&upstream, &mirrorRepo))
+	root.AddCommand(NewRequestCVECmd(&upstream, &mirrorRepo))
 	return root
 }
 
