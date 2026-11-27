@@ -65,7 +65,7 @@ func fakeGitHubRefs(t *testing.T, pullsStatus int, missingReleaseBranch bool, re
 		_, _ = fmt.Fprintf(w, "[%s]", strings.Join(parts, ","))
 	}
 	mux.HandleFunc("/repos/example/upstream/git/matching-refs/heads/release-", func(w http.ResponseWriter, _ *http.Request) {
-		refs(w, "refs/heads/", "release-3.7", "release-4.0", "release-4.1", "release-4.2", "release-notes")
+		refs(w, "refs/heads/", "release-3.7", "release-4.0", "release-4.1", "release-4.2", "release-notes", "release-2.12.1", "release-4")
 	})
 	mux.HandleFunc("/repos/example/upstream/git/matching-refs/tags/v", func(w http.ResponseWriter, _ *http.Request) {
 		refs(w, "refs/tags/", "v4.1.0", "v4.0.0", "v3.7.0", "v4.2.0-rc1")
@@ -168,6 +168,8 @@ func TestFetchAdvisoryFields(t *testing.T) {
 	}, a.Credits)
 }
 
+// TestFetchReleases: only release-X.Y branches count; release-notes,
+// release-2.12.1 and release-4 are skipped.
 func TestFetchReleases(t *testing.T) {
 	snap := fakeGitHub(t, http.StatusOK, false).Fetch(t.Context(), nil)
 	require.NoError(t, snap.Err)

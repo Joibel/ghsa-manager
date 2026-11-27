@@ -56,6 +56,10 @@ type Opener struct {
 	// ClaudeHome is Claude Code's config directory (~/.claude), for finding
 	// session transcripts.
 	ClaudeHome string
+	// ClaudeConfigDir is ghsa-manager's $CLAUDE_CONFIG_DIR, or "" when it's
+	// unset. The window runs with the tmux server's environment, so it is
+	// passed on: the session's transcripts then land under ClaudeHome.
+	ClaudeConfigDir string
 	// Self is ghsa-manager's own executable, for the session's request-cve.
 	Self string
 	// Pane is ghsa-manager's own tmux pane ($TMUX_PANE): a switch goes to the
@@ -102,12 +106,24 @@ func (o *Opener) Open(ctx context.Context, a model.Advisory, open []model.Item) 
 		// would be read as one.
 		claude = append(claude, "--session-id", id, "--", Prompt(o, a, open))
 	}
-	win, err := o.Run(ctx, "", "tmux", "new-window", "-P", "-F", "#{window_id}", "-n", a.ID, "-c", o.Checkout, shellJoin(claude))
+	// Claude retitles the terminal from the conversation, which would carry
+	// advisory details into the window's name and the outer terminal's title.
+	args := []string{"new-window", "-P", "-F", "#{window_id}", "-n", a.ID, "-c", o.Checkout,
+		"-e", "CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1"}
+	if o.ClaudeConfigDir != "" {
+		args = append(args, "-e", "CLAUDE_CONFIG_DIR="+o.ClaudeConfigDir)
+	}
+	win, err := o.Run(ctx, "", "tmux", append(args, shellJoin(claude))...)
 	if err != nil {
 		return "", err
 	}
-	if _, err = o.Run(ctx, "", "tmux", "set-option", "-w", "-t", strings.TrimSpace(win), windowKey, a.ID); err != nil {
-		return "", err
+	win = strings.TrimSpace(win)
+	// The window's name stays the GHSA ID: nothing in it may rename it or set
+	// its pane's title.
+	for _, opt := range [][]string{{windowKey, a.ID}, {"allow-rename", "off"}, {"allow-set-title", "off"}} {
+		if _, err = o.Run(ctx, "", "tmux", "set-option", "-w", "-t", win, opt[0], opt[1]); err != nil {
+			return "", err
+		}
 	}
 	if resumed {
 		return "Resumed Claude on " + a.ID, nil

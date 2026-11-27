@@ -16,6 +16,7 @@ type Version struct {
 }
 
 // Parse reads an optional "v" prefix, then X.Y.Z with an optional -pre suffix.
+// A two-part X.Y is X.Y.0, as advisories' ranges sometimes give it.
 func Parse(s string) (Version, error) {
 	rest := strings.TrimPrefix(s, "v")
 	core, pre, hasPre := strings.Cut(rest, "-")
@@ -24,8 +25,8 @@ func Parse(s string) (Version, error) {
 	}
 
 	parts := strings.Split(core, ".")
-	if len(parts) != 3 {
-		return Version{}, fmt.Errorf("version %q: want X.Y.Z", s)
+	if len(parts) != 2 && len(parts) != 3 {
+		return Version{}, fmt.Errorf("version %q: want X.Y.Z or X.Y", s)
 	}
 
 	var nums [3]int

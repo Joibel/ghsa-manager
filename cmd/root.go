@@ -130,13 +130,14 @@ func openSession(repos gh.Repos, checkout string) func(context.Context, model.Ad
 	if err != nil {
 		self = "ghsa-manager"
 	}
-	claudeHome := os.Getenv("CLAUDE_CONFIG_DIR")
+	configDir := os.Getenv("CLAUDE_CONFIG_DIR")
+	claudeHome := configDir
 	if claudeHome == "" {
 		claudeHome = filepath.Join(os.Getenv("HOME"), ".claude")
 	}
 	o := &session.Opener{
 		Run: execRun, Upstream: repos.Upstream, Mirror: repos.Mirror, Checkout: checkout,
-		ClaudeHome: claudeHome, Self: self,
+		ClaudeHome: claudeHome, ClaudeConfigDir: configDir, Self: self,
 		Pane: os.Getenv("TMUX_PANE"), InTmux: os.Getenv("TMUX") != "",
 	}
 	return func(ctx context.Context, a model.Advisory, open []model.Item) (string, error) {

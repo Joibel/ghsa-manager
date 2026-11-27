@@ -81,10 +81,11 @@ func (c Checklist) Count() (int, int) {
 	return done, len(c.Results)
 }
 
-// Complete reports whether every item is done or waived.
+// Complete reports whether every item is done or waived. A checklist with no
+// items, one that was never evaluated, isn't.
 func (c Checklist) Complete() bool {
 	done, total := c.Count()
-	return done == total
+	return total > 0 && done == total
 }
 
 // StatusWith is Status, except that an advisory that would be Ready is

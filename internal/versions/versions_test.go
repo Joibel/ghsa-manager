@@ -14,7 +14,15 @@ func TestParse(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, Version{Major: 4, Minor: 1, Patch: 0, Pre: "rc1"}, v)
 
-	for _, bad := range []string{"", "4.1", "4.1.x", "4.1.0-", "a.b.c", "+4.1.0", "4.1.0.1"} {
+	// Advisories' ranges sometimes give two-part versions: X.Y is X.Y.0.
+	v, err = Parse("3.5")
+	require.NoError(t, err)
+	assert.Equal(t, Version{Major: 3, Minor: 5, Patch: 0}, v)
+	v, err = Parse("v3.5-rc1")
+	require.NoError(t, err)
+	assert.Equal(t, Version{Major: 3, Minor: 5, Patch: 0, Pre: "rc1"}, v)
+
+	for _, bad := range []string{"", "4", "v4", "4.", "4.1.", "4.x", "4.1.x", "4.1.0-", "a.b.c", "+4.1.0", "4.1.0.1"} {
 		_, err := Parse(bad)
 		require.Error(t, err, bad)
 	}
@@ -75,6 +83,8 @@ func TestCoversMinor(t *testing.T) {
 		{"< 4.2.0", []string{"4.1"}, []string{"4.2"}},
 		{"< 4.2.0-rc2", []string{"4.2"}, nil},
 		{">= 4.0.0, < 3.0.0", nil, []string{"3.0", "4.0"}},
+		{"< 3.5", []string{"3.4"}, []string{"3.5"}},
+		{">= 4.1, < 4.1.3", []string{"4.1"}, []string{"4.0", "4.2"}},
 	}
 	for _, tt := range tests {
 		r, err := ParseRange(tt.rng)

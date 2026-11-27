@@ -77,9 +77,7 @@ func TestChecklistOpensAndCloses(t *testing.T) {
 	m = key(m, "l")
 	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
 	m = asModel(t, next)
-	if cmd != nil {
-		assert.NotEqual(t, tea.Quit(), cmd(), "q goes back, it doesn't quit")
-	}
+	assert.Nil(t, cmd, "q goes back, it doesn't quit")
 	assert.Empty(t, m.listID)
 }
 
@@ -148,6 +146,42 @@ func TestChecklistRequestCVEFails(t *testing.T) {
 	require.NotNil(t, cmd)
 	next, _ := m.Update(cmd())
 	assert.Contains(t, asModel(t, next).View(), "requesting a CVE for "+idA+": 422")
+}
+
+// An advisory that has a CVE needs no request: C says so and doesn't ask.
+func TestChecklistRequestCVEHasOne(t *testing.T) {
+	snap := snapshot()
+	snap.Advisories[0].CVEID = "CVE-2026-1234"
+	f := &fakes{snap: snap, inFlight: 3}
+	m := key(openList(t, f), "C")
+	v := m.View()
+	assert.Contains(t, v, idA+" already has CVE-2026-1234")
+	assert.NotContains(t, v, "y/n")
+	assert.Contains(t, v, checklistHelp)
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	asModel(t, next)
+	assert.Nil(t, cmd)
+	assert.Empty(t, f.cves)
+}
+
+// A request already recorded is mentioned, with its date, before asking again.
+func TestChecklistRequestCVEAgain(t *testing.T) {
+	f := &fakes{snap: snapshot(), inFlight: 3}
+	m := openList(t, f)
+	require.NoError(t, state.Update(f.statePath, func(s *state.State) error {
+		c := s.Checks[idA]
+		c.MarkCVERequested(now())
+		s.Checks[idA] = c
+		return nil
+	}))
+	m = key(m, "C")
+	assert.Contains(t, m.View(), "a CVE was already requested for "+idA+" on 26 Nov; request again? y/n")
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	m = asModel(t, next)
+	require.NotNil(t, cmd)
+	next, _ = m.Update(cmd())
+	asModel(t, next)
+	assert.Equal(t, []string{idA}, f.cves)
 }
 
 // The CVE line reflects a request recorded in the state file.

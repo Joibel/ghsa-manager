@@ -74,7 +74,11 @@ func (m Model) listKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			return nil
 		})
 	case "C":
-		m.confirmCVE = true
+		if a.CVEID != "" {
+			m.note(a.ID + " already has " + a.CVEID)
+		} else {
+			m.confirmCVE = true
+		}
 	case "a":
 		return m, m.openSession(a)
 	case "r":

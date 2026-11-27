@@ -93,17 +93,25 @@ func TestOpenStarts(t *testing.T) {
 	msg, err := o.Open(context.Background(), advisory(), open)
 	require.NoError(t, err)
 	assert.Equal(t, "Started Claude on "+ghsa, msg)
-	require.Len(t, f.calls, 3)
+	require.Len(t, f.calls, 5)
 	assert.Equal(t, "$ tmux list-windows -a -F #{window_id} #{@ghsa_key}", f.calls[0])
 	w := f.calls[1]
-	assert.True(t, strings.HasPrefix(w, "$ tmux new-window -P -F #{window_id} -n "+ghsa+" -c "+o.Checkout+" 'claude' "), w)
+	// Claude retitles the terminal from the conversation: it mustn't, or the
+	// window name and the outer terminal's title could carry advisory details.
+	assert.True(t, strings.HasPrefix(w, "$ tmux new-window -P -F #{window_id} -n "+ghsa+" -c "+o.Checkout+
+		" -e CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 'claude' "), w)
+	assert.NotContains(t, w, "CLAUDE_CONFIG_DIR")
 	assert.Contains(t, w, `'--strict-mcp-config'`)
 	assert.Contains(t, w, `'--mcp-config' '{"mcpServers":{}}'`)
 	id := session.SessionID(upstream, ghsa)
 	// --mcp-config takes several values: "--" ends them, so the prompt isn't
 	// read as one.
 	assert.Contains(t, w, `'--session-id' '`+id+`' '--' 'This session`)
-	assert.Equal(t, "$ tmux set-option -w -t @7 @ghsa_key "+ghsa, f.calls[2])
+	assert.Equal(t, []string{
+		"$ tmux set-option -w -t @7 @ghsa_key " + ghsa,
+		"$ tmux set-option -w -t @7 allow-rename off",
+		"$ tmux set-option -w -t @7 allow-set-title off",
+	}, f.calls[2:])
 }
 
 func TestOpenResumes(t *testing.T) {
@@ -117,8 +125,26 @@ func TestOpenResumes(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "Resumed Claude on "+ghsa, msg)
 	w := f.newWindow(t)
+	assert.Contains(t, w, " -e CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 'claude' ")
 	assert.True(t, strings.HasSuffix(w, `'claude' '--strict-mcp-config' '--mcp-config' '{"mcpServers":{}}' '--resume' '`+id+`'`), w)
 	assert.NotContains(t, w, "--session-id")
+	assert.Equal(t, []string{
+		"$ tmux set-option -w -t @7 @ghsa_key " + ghsa,
+		"$ tmux set-option -w -t @7 allow-rename off",
+		"$ tmux set-option -w -t @7 allow-set-title off",
+	}, f.calls[len(f.calls)-3:])
+}
+
+// TestOpenClaudeConfigDir: the window runs with the tmux server's environment,
+// so ghsa-manager's CLAUDE_CONFIG_DIR is passed on, and the session's
+// transcripts land where ghsa-manager looks for them.
+func TestOpenClaudeConfigDir(t *testing.T) {
+	f, o := setup(t)
+	o.ClaudeConfigDir = "/home/x/.claude-work"
+	_, err := o.Open(context.Background(), advisory(), open)
+	require.NoError(t, err)
+	assert.Contains(t, f.newWindow(t),
+		" -e CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 -e CLAUDE_CONFIG_DIR=/home/x/.claude-work 'claude' ")
 }
 
 // TestOpenSwitches: Alan's terminals are grouped sessions sharing windows, so

@@ -158,7 +158,11 @@ func (m Model) footer(s *state.State) string {
 	case m.confirmFork != "":
 		lines = append(lines, " make a fork for "+m.confirmFork+"? y/n")
 	case m.confirmCVE:
-		lines = append(lines, " request a CVE for "+m.listID+"? y/n")
+		if at := s.Checks[m.listID].CVERequested; !at.IsZero() {
+			lines = append(lines, " a CVE was already requested for "+m.listID+" on "+day(at)+"; request again? y/n")
+		} else {
+			lines = append(lines, " request a CVE for "+m.listID+"? y/n")
+		}
 	case m.listID != "":
 		lines = append(lines, " "+checklistHelp)
 	default:

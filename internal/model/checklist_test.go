@@ -449,6 +449,7 @@ func TestStatusWith(t *testing.T) {
 	cl := Evaluate(waived, rel, 2, c)
 	assert.Equal(t, ItemWaived, result(t, cl, ItemCVSS).State)
 	assert.True(t, cl.Complete(), "waived items count towards done")
+	assert.False(t, Checklist{}.Complete(), "an unevaluated checklist isn't complete")
 
 	needsCI := a
 	needsCI.PRs = []FixPR{pr("main", CI{}, approved("alice", headSHA))}

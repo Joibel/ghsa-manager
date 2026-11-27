@@ -55,7 +55,7 @@ queue · `x` clear stuck runs · `R` post the current CI results now (no re-run)
 
 On the checklist screen: `space` ticks or unticks the item under the cursor (on
 a missing branch, or an item that isn't set, it waives it) · `C` requests a CVE,
-after a y/n · `a` open the advisory's Claude session · `r` refresh · `esc` or `q` goes back.
+after a y/n · `a` opens the advisory's Claude session · `r` refresh · `esc` or `q` goes back.
 
 `a` needs ghsa-manager running inside tmux, and `claude` on your PATH. It opens
 a tmux window named after the advisory's GHSA ID, running an interactive Claude
