@@ -12,7 +12,7 @@ import (
 	"github.com/Joibel/ghsa-manager/internal/state"
 )
 
-const help = "c mark for CI · u unmark · t/b send to top/bottom of queue · x clear stuck runs · R report CI now · l checklist · enter open advisory · p open PR · f make fork · r refresh · q quit"
+const help = "c mark for CI · u unmark · t/b send to top/bottom of queue · x clear stuck runs · R report CI now · l checklist · a Claude · enter open advisory · p open PR · f make fork · r refresh · q quit"
 
 func (m Model) key(msg tea.KeyMsg) (Model, tea.Cmd) {
 	switch {
@@ -68,8 +68,32 @@ func (m Model) action(k string, sel row) (Model, tea.Cmd) {
 		}
 	case "l":
 		m.listID, m.listCursor = sel.adv.ID, 0
+	case "a":
+		return m, m.openSession(sel.adv)
 	}
 	return m, nil
+}
+
+// openSession opens a's Claude session, off the Bubble Tea loop: the tmux
+// calls can block briefly. The session's prompt names the checklist's open and
+// stale items.
+func (m Model) openSession(a model.Advisory) tea.Cmd {
+	var open []model.Item
+	for _, r := range m.checklist(a).Results {
+		if r.State == model.ItemOpen || r.State == model.ItemStale {
+			open = append(open, r.Item)
+		}
+	}
+	openSession := m.deps.OpenSession
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
+		defer cancel()
+		note, err := openSession(ctx, a, open)
+		if err != nil {
+			return noteMsg(fmt.Sprintf("couldn't open a Claude session for %s: %v", a.ID, err))
+		}
+		return noteMsg(note)
+	}
 }
 
 func (m Model) mark(sel row) (Model, tea.Cmd) {

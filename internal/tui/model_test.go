@@ -63,6 +63,7 @@ type fakes struct {
 	statePath   string
 	runErr      error
 	cveErr      error
+	sessionErr  error
 	snap        source.Snapshot
 	runs        [][]int
 	runResult   []runner.Result
@@ -71,8 +72,15 @@ type fakes struct {
 	reported    []string
 	reruns      []int64
 	cves        []string
+	sessions    []session
 	inFlight    int
 	lockedInRep bool
+}
+
+// session is one OpenSession call.
+type session struct {
+	id   string
+	open []model.Item
 }
 
 func newModel(t *testing.T, f *fakes) Model {
@@ -106,6 +114,13 @@ func newModel(t *testing.T, f *fakes) Model {
 		RequestCVE: func(_ context.Context, ghsa string) error {
 			f.cves = append(f.cves, ghsa)
 			return f.cveErr
+		},
+		OpenSession: func(_ context.Context, a model.Advisory, open []model.Item) (string, error) {
+			f.sessions = append(f.sessions, session{id: a.ID, open: open})
+			if f.sessionErr != nil {
+				return "", f.sessionErr
+			}
+			return "Started Claude on " + a.ID, nil
 		},
 		StatePath: f.statePath,
 		MaxRuns:   3,

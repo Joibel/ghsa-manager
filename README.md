@@ -50,12 +50,24 @@ ghsa-manager status     # print once and exit
 ```
 
 Keys: `c` mark for CI · `u` unmark · `t`/`b` send to the top or bottom of the
-queue · `x` clear stuck runs · `R` post the current CI results now (no re-run) · `l` open the release checklist · `enter` open the advisory · `p` open the PR ·
+queue · `x` clear stuck runs · `R` post the current CI results now (no re-run) · `l` open the release checklist · `a` open the advisory's Claude session · `enter` open the advisory · `p` open the PR ·
 `f` make a fork · `r` refresh · `q` quit.
 
 On the checklist screen: `space` ticks or unticks the item under the cursor (on
 a missing branch, or an item that isn't set, it waives it) · `C` requests a CVE,
-after a y/n · `r` refresh · `esc` or `q` goes back.
+after a y/n · `a` open the advisory's Claude session · `r` refresh · `esc` or `q` goes back.
+
+`a` needs ghsa-manager running inside tmux, and `claude` on your PATH. It opens
+a tmux window named after the advisory's GHSA ID, running an interactive Claude
+Code session in the security checkout (`checkout` above), with no MCP servers.
+Each advisory keeps one session: `a` again switches to its window, or resumes
+the session once the window is closed. The session starts knowing the
+advisory's ID, links, fork, fix PRs and open checklist items, never its title
+or description. It may read the advisory with `gh api`, and change it only
+after you agree in the chat; it can request a CVE with
+`ghsa-manager request-cve --upstream <upstream> --mirror <mirror> <GHSA>`
+(the TUI's own repositories), and must never comment on, publish or change
+the state of the advisory.
 
 ## Development
 

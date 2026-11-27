@@ -187,3 +187,42 @@ func TestChecklistStale(t *testing.T) {
 	assert.Contains(t, line, "ticked (changed since)")
 	assert.Contains(t, line, "!")
 }
+
+// pressA presses a and delivers the session note its command returns.
+func pressA(t *testing.T, m Model) Model {
+	t.Helper()
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	require.NotNil(t, cmd)
+	next, _ = asModel(t, next).Update(cmd())
+	return asModel(t, next)
+}
+
+func TestSessionKey(t *testing.T) {
+	// idA's open items: branches (release-4.2 has no PR) and the unticked
+	// values; its CVE isn't requested.
+	wantOpen := []model.Item{model.ItemBranches, model.ItemDescription, model.ItemCVSS, model.ItemCVE, model.ItemVersions, model.ItemCredits}
+
+	f := &fakes{snap: snapshot(), inFlight: 3}
+	m := pressA(t, load(t, newModel(t, f), f))
+	assert.Equal(t, []session{{id: idA, open: wantOpen}}, f.sessions)
+	assert.Contains(t, m.View(), "Started Claude on "+idA)
+
+	// On the checklist screen, a ticked item isn't open, and a stale one is.
+	f = &fakes{snap: snapshot(), inFlight: 3}
+	m = openList(t, f)
+	m = key(cursorTo(t, m, model.ItemDescription, ""), "space")
+	m = key(cursorTo(t, m, model.ItemCVSS, ""), "space")
+	snap := snapshot()
+	snap.Advisories[0].CVSSVector = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
+	f.snap = snap
+	m = load(t, m, f)
+	m = pressA(t, m)
+	assert.Equal(t, []session{{id: idA, open: []model.Item{
+		model.ItemBranches, model.ItemCVSS, model.ItemCVE, model.ItemVersions, model.ItemCredits,
+	}}}, f.sessions)
+	assert.Equal(t, idA, m.listID, "a keeps the checklist screen open")
+
+	f.sessionErr = errors.New("not inside tmux")
+	m = pressA(t, m)
+	assert.Contains(t, m.View(), "not inside tmux")
+}

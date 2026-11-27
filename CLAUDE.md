@@ -15,7 +15,9 @@ every tool. Run `lefthook install` once per clone.
 Everything this tool touches is embargoed security work.
 
 - Only talk to `api.github.com`, `github.com`, and git over SSH to the private mirror
-  (configured as `mirror`). No other services, no telemetry.
+  (configured as `mirror`). No other services, no telemetry. The one exception is the
+  interactive Claude Code session that `a` opens, which Alan has chosen to allow; it runs
+  with no MCP servers.
 - Read the token from `gh auth token` only. Never read `GITHUB_TOKEN`/`GH_TOKEN` or add a token flag.
 - Never log advisory titles or details anywhere except the screen.
 - Local state lives in `$XDG_STATE_HOME/ghsa-manager/` (dir `0700`, files `0600`).

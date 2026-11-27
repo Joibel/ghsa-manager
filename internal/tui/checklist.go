@@ -75,6 +75,8 @@ func (m Model) listKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		})
 	case "C":
 		m.confirmCVE = true
+	case "a":
+		return m, m.openSession(a)
 	case "r":
 		return m, m.fetch()
 	}

@@ -40,11 +40,14 @@ type Deps struct {
 	// RequestCVE asks GitHub for a CVE and records the request in the state
 	// file. Its error names the advisory.
 	RequestCVE func(ctx context.Context, ghsa string) error
-	Open       func(url string) error
-	Now        func() time.Time
-	StatePath  string
-	Refresh    time.Duration
-	MaxRuns    int
+	// OpenSession opens the advisory's Claude session in tmux, given its open
+	// checklist items, and returns a line saying what it did.
+	OpenSession func(ctx context.Context, a model.Advisory, open []model.Item) (string, error)
+	Open        func(url string) error
+	Now         func() time.Time
+	StatePath   string
+	Refresh     time.Duration
+	MaxRuns     int
 	// Supported is how many supported release branches the checklist expects.
 	Supported int
 }

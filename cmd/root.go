@@ -2,8 +2,12 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -17,6 +21,7 @@ import (
 	"github.com/Joibel/ghsa-manager/internal/model"
 	"github.com/Joibel/ghsa-manager/internal/report"
 	"github.com/Joibel/ghsa-manager/internal/runner"
+	"github.com/Joibel/ghsa-manager/internal/session"
 	"github.com/Joibel/ghsa-manager/internal/source"
 	"github.com/Joibel/ghsa-manager/internal/state"
 	"github.com/Joibel/ghsa-manager/internal/tui"
@@ -44,12 +49,11 @@ The upstream and mirror repositories come from the config file
 			if err != nil {
 				return err
 			}
-			repos := cfg.Repos
 			client, err := newClient(c.Context())
 			if err != nil {
 				return err
 			}
-			p := tea.NewProgram(tui.New(deps(client, repos, cfg.SupportedBranches, maxRuns, refresh)), tea.WithAltScreen(), tea.WithContext(c.Context()))
+			p := tea.NewProgram(tui.New(deps(client, cfg, maxRuns, refresh)), tea.WithAltScreen(), tea.WithContext(c.Context()))
 			if _, err := p.Run(); err != nil {
 				return fmt.Errorf("running the TUI: %w", err)
 			}
@@ -77,7 +81,8 @@ func newClient(ctx context.Context) (*github.Client, error) {
 	return client, nil
 }
 
-func deps(c *github.Client, repos gh.Repos, supported, maxRuns int, refresh time.Duration) tui.Deps {
+func deps(c *github.Client, cfg config.Config, maxRuns int, refresh time.Duration) tui.Deps {
+	repos := cfg.Repos
 	facts := mirror.NewFacts(c, nil, repos.Mirror)
 	src := source.New(c, facts, repos)
 	run := runner.Runner{Script: runner.FromMirror(c, repos.Mirror)}
@@ -104,6 +109,7 @@ func deps(c *github.Client, repos gh.Repos, supported, maxRuns int, refresh time
 		RequestCVE: func(ctx context.Context, ghsa string) error {
 			return cve.Request(ctx, c, repos.Upstream, statePath, ghsa, time.Now())
 		},
+		OpenSession: openSession(repos, cfg.Checkout),
 		Open: func(url string) error {
 			if err := exec.Command("xdg-open", url).Start(); err != nil { //nolint:gosec,noctx // opens a GitHub URL in the browser; outlives the request
 				return fmt.Errorf("xdg-open: %w", err)
@@ -112,7 +118,47 @@ func deps(c *github.Client, repos gh.Repos, supported, maxRuns int, refresh time
 		},
 		StatePath: statePath,
 		MaxRuns:   maxRuns,
-		Supported: supported,
+		Supported: cfg.SupportedBranches,
 		Refresh:   refresh,
 	}
+}
+
+// openSession opens an advisory's Claude session in tmux, in the security
+// checkout.
+func openSession(repos gh.Repos, checkout string) func(context.Context, model.Advisory, []model.Item) (string, error) {
+	self, err := os.Executable()
+	if err != nil {
+		self = "ghsa-manager"
+	}
+	claudeHome := os.Getenv("CLAUDE_CONFIG_DIR")
+	if claudeHome == "" {
+		claudeHome = filepath.Join(os.Getenv("HOME"), ".claude")
+	}
+	o := &session.Opener{
+		Run: execRun, Upstream: repos.Upstream, Mirror: repos.Mirror, Checkout: checkout,
+		ClaudeHome: claudeHome, Self: self,
+		Pane: os.Getenv("TMUX_PANE"), InTmux: os.Getenv("TMUX") != "",
+	}
+	return func(ctx context.Context, a model.Advisory, open []model.Item) (string, error) {
+		if _, err := exec.LookPath(session.ClaudeCmd); err != nil {
+			return "", errors.New("claude isn't on PATH: install Claude Code to open a session")
+		}
+		return o.Open(ctx, a, open)
+	}
+}
+
+// execRun runs a command in dir and returns its stdout. Its error carries the
+// command's stderr.
+func execRun(ctx context.Context, dir, name string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // G204: running tmux is the point
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		var ee *exec.ExitError
+		if errors.As(err, &ee) && len(ee.Stderr) > 0 {
+			return string(out), fmt.Errorf("%s: %w: %s", name, err, strings.TrimSpace(string(ee.Stderr)))
+		}
+		return string(out), fmt.Errorf("%s: %w", name, err)
+	}
+	return string(out), nil
 }
