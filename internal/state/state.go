@@ -1,5 +1,5 @@
 // Package state holds ghsa-manager's only local data: the CI queue, in-flight
-// runs, recorded bases and report comment IDs. It's written atomically, at
+// runs, recorded bases, report comment IDs and release checklist records. It's written atomically, at
 // 0600 in a 0700 directory, with writers serialised by an flock on a sidecar.
 package state
 
@@ -45,13 +45,15 @@ type State struct {
 	// Failures maps an advisory to the fix PRs whose CI couldn't start, with the
 	// reason. They're kept, for the screen, until the advisory is marked again.
 	Failures map[string]map[int]string `json:"failures"`
-	Queue    []QueueEntry              `json:"queue"`
-	InFlight []Flight                  `json:"in_flight"`
+	// Checks maps an advisory to its release checklist record.
+	Checks   map[string]model.Checks `json:"checks"`
+	Queue    []QueueEntry            `json:"queue"`
+	InFlight []Flight                `json:"in_flight"`
 }
 
 // Empty returns a state with nothing queued.
 func Empty() *State {
-	return &State{CommentIDs: map[string]int64{}, Bases: map[string]model.RecordedBase{}, Failures: map[string]map[int]string{}}
+	return &State{CommentIDs: map[string]int64{}, Bases: map[string]model.RecordedBase{}, Failures: map[string]map[int]string{}, Checks: map[string]model.Checks{}}
 }
 
 // Path is the state file for an upstream:
@@ -86,6 +88,9 @@ func Load(path string) (*State, error) {
 	}
 	if s.Failures == nil {
 		s.Failures = map[string]map[int]string{}
+	}
+	if s.Checks == nil {
+		s.Checks = map[string]model.Checks{}
 	}
 	return s, nil
 }

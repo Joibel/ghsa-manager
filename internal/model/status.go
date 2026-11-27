@@ -10,6 +10,9 @@ const (
 	NeedsCI
 	NeedsReview
 	Ready
+	// ChecklistOpen is an advisory that would be Ready but whose checklist
+	// isn't complete.
+	ChecklistOpen
 )
 
 // String is the status word shown on screen.
@@ -25,6 +28,8 @@ func (s Status) String() string {
 		return "needs review"
 	case Ready:
 		return "ready"
+	case ChecklistOpen:
+		return "checklist"
 	}
 	return "unknown"
 }

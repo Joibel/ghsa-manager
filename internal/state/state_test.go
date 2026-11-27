@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -77,4 +78,34 @@ func TestPath_HonoursXDGStateHome(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", "")
 	t.Setenv("HOME", "/home/u")
 	assert.Equal(t, "/home/u/.local/state/ghsa-manager/example_upstream.json", Path("example/upstream"))
+}
+
+func TestLoadOldStateHasChecks(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{"comment_ids":{},"queue":[]}`), 0o600))
+	s, err := Load(path)
+	require.NoError(t, err)
+	assert.NotNil(t, s.Checks)
+	assert.NotNil(t, Empty().Checks)
+
+	at := time.Date(2026, 11, 27, 12, 0, 0, 0, time.UTC)
+	require.NoError(t, Update(path, func(s *State) error {
+		c := s.Checks["GHSA-aaaa-bbbb-cccc"]
+		c.Toggle(model.Advisory{CVSSVector: "CVSS:3.1/AV:N"}, nil, 2, model.ItemCVSS, "", at)
+		s.Checks["GHSA-aaaa-bbbb-cccc"] = c
+		return nil
+	}))
+
+	fi, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), fi.Mode().Perm())
+	b, err := os.ReadFile(path) //nolint:gosec // test-controlled path
+	require.NoError(t, err)
+	assert.NotContains(t, string(b), "CVSS", "the state file holds hashes, never values")
+
+	s, err = Load(path)
+	require.NoError(t, err)
+	tick := s.Checks["GHSA-aaaa-bbbb-cccc"].Ticks[model.ItemCVSS]
+	assert.True(t, at.Equal(tick.At))
+	assert.Equal(t, model.ValueHash(model.Advisory{CVSSVector: "CVSS:3.1/AV:N"}, model.ItemCVSS), tick.Hash)
 }

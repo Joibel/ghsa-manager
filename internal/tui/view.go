@@ -33,7 +33,7 @@ func statusStyle(st styles, s model.Status) lipgloss.Style {
 		return st.good
 	case model.NoFork:
 		return st.bad
-	case model.NeedsCI, model.NeedsReview:
+	case model.NeedsCI, model.NeedsReview, model.ChecklistOpen:
 		return st.warn
 	case model.ForkNoPRs:
 		return st.dim
