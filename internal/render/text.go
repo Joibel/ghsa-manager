@@ -9,7 +9,33 @@ import (
 	"time"
 
 	"github.com/Joibel/ghsa-manager/internal/model"
+	"github.com/Joibel/ghsa-manager/internal/source"
 )
+
+// Checklists evaluates every advisory's release checklist, keyed by GHSA ID.
+func Checklists(snap source.Snapshot, checks map[string]model.Checks, supported int) map[string]model.Checklist {
+	out := make(map[string]model.Checklist, len(snap.Advisories))
+	for _, a := range snap.Advisories {
+		out[a.ID] = model.Evaluate(a, snap.Releases, supported, checks[a.ID])
+	}
+	return out
+}
+
+// StatusText is an advisory's status word; a Ready advisory with an open
+// checklist reads "checklist n/6".
+func StatusText(a model.Advisory, cl model.Checklist) string {
+	s := a.StatusWith(cl)
+	if s == model.ChecklistOpen {
+		return s.String() + " " + CountText(cl)
+	}
+	return s.String()
+}
+
+// CountText is the checklist's REL cell: "3/6".
+func CountText(cl model.Checklist) string {
+	done, total := cl.Count()
+	return fmt.Sprintf("%d/%d", done, total)
+}
 
 // CIText is a PR's CI cell: result, age and notes.
 func CIText(p model.FixPR, now time.Time) string {

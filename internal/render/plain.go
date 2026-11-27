@@ -5,12 +5,13 @@ import (
 	"io"
 	"strings"
 
+	"github.com/Joibel/ghsa-manager/internal/model"
 	"github.com/Joibel/ghsa-manager/internal/source"
 )
 
 const (
-	advisoryRow = " %-2s %-20s %-14s %s"
-	prRow       = "%40s%-12s #%-3d %-15s %-30s %s"
+	advisoryRow = " %-2s %-20s %-14s %-4s %s"
+	prRow       = "%45s%-12s #%-3d %-15s %-30s %s"
 )
 
 // QueueLabel is an advisory's queue cell: its 1-based position, or "·".
@@ -24,16 +25,16 @@ func QueueLabel(id string, queue []string) string {
 }
 
 // Plain writes the snapshot as layout A, without colour.
-func Plain(w io.Writer, snap source.Snapshot, queue []string) error {
+func Plain(w io.Writer, snap source.Snapshot, queue []string, lists map[string]model.Checklist) error {
 	var b strings.Builder
-	fmt.Fprintf(&b, advisoryRow+"%-12s %-4s %-15s %-30s %s\n", "Q", "GHSA", "STATE", "", "BRANCH", "PR", "AUTHOR", "CI", "REVIEWS")
+	fmt.Fprintf(&b, advisoryRow+"%-12s %-4s %-15s %-30s %s\n", "Q", "GHSA", "STATE", "REL", "", "BRANCH", "PR", "AUTHOR", "CI", "REVIEWS")
 	for _, a := range snap.Advisories {
 		q := QueueLabel(a.ID, queue)
 		fork := ForkText(a)
 		if q != "·" && len(a.PRs) > 1 && a.MainNotGreen() {
 			fork += "  ⚠ main not green"
 		}
-		line := strings.TrimRight(fmt.Sprintf(advisoryRow, q, a.ID, a.Status(), fork), " ")
+		line := strings.TrimRight(fmt.Sprintf(advisoryRow, q, a.ID, StatusText(a, lists[a.ID]), CountText(lists[a.ID]), fork), " ")
 		if a.Summary != "" {
 			line += "  " + Truncate(a.Summary, DefaultTitleWidth)
 		}

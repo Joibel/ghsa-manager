@@ -49,13 +49,14 @@ func (m Model) View() string {
 	for _, e := range s.Queue {
 		queueIDs = append(queueIDs, e.GHSA)
 	}
+	lists := render.Checklists(m.snap, s.Checks, m.deps.Supported)
 	var b strings.Builder
-	b.WriteString(st.header.Render(fmt.Sprintf(" %-2s %-20s %-14s %-8s%-12s %-4s %-15s %-30s %s",
-		"Q", "GHSA", "STATE", "", "BRANCH", "PR", "AUTHOR", "CI", "REVIEWS")) + "\n")
+	b.WriteString(st.header.Render(fmt.Sprintf(" %-2s %-20s %-14s %-4s %-12s %-4s %-15s %-30s %s",
+		"Q", "GHSA", "STATE", "REL", "BRANCH", "PR", "AUTHOR", "CI", "REVIEWS")) + "\n")
 	rows := m.rows()
 	cursor := m.cursor(rows)
 	for i, r := range rows {
-		line := m.rowText(st, r, s, queueIDs)
+		line := m.rowText(st, r, s, queueIDs, lists[r.adv.ID])
 		if i == cursor {
 			line = st.selected.Render(line)
 		}
@@ -65,20 +66,25 @@ func (m Model) View() string {
 	return b.String()
 }
 
-func (m Model) rowText(st styles, r row, s *state.State, queueIDs []string) string {
+func (m Model) rowText(st styles, r row, s *state.State, queueIDs []string, cl model.Checklist) string {
 	if r.pr < 0 {
 		a := r.adv
 		fork := render.ForkText(a)
 		if a.MainNotGreen() && cherryPicksBusy(a, s) {
 			fork += "  " + st.warn.Render("⚠ main not green")
 		}
-		line := fmt.Sprintf(" %-2s %-20s %s %s", render.QueueLabel(a.ID, queueIDs), a.ID,
-			statusStyle(st, a.Status()).Render(fmt.Sprintf("%-14s", a.Status())), fork)
+		relStyle := st.warn
+		if cl.Complete() {
+			relStyle = st.good
+		}
+		line := fmt.Sprintf(" %-2s %-20s %s %s %s", render.QueueLabel(a.ID, queueIDs), a.ID,
+			statusStyle(st, a.StatusWith(cl)).Render(fmt.Sprintf("%-14s", render.StatusText(a, cl))),
+			relStyle.Render(fmt.Sprintf("%-4s", render.CountText(cl))), fork)
 		return line + m.title(a, lipgloss.Width(line))
 	}
 	p := r.adv.PRs[r.pr]
 	p.StartError = s.Failures[r.adv.ID][p.Number]
-	return fmt.Sprintf("%40s%-12s #%-3d %-15s %-30s %s", "", p.Base, p.Number, render.Truncate(p.Author, 15),
+	return fmt.Sprintf("%45s%-12s #%-3d %-15s %-30s %s", "", p.Base, p.Number, render.Truncate(p.Author, 15),
 		render.CIText(p, m.deps.Now()), render.ReviewsText(p))
 }
 

@@ -38,7 +38,7 @@ func NewStatusCmd(upstream, mirrorRepo *string) *cobra.Command {
 				queue = append(queue, e.GHSA)
 			}
 			snap := source.New(client, mirror.NewFacts(client, nil, repos.Mirror), repos).Fetch(c.Context(), st.Bases)
-			if err := render.Plain(c.OutOrStdout(), snap, queue); err != nil {
+			if err := render.Plain(c.OutOrStdout(), snap, queue, render.Checklists(snap, st.Checks, cfg.SupportedBranches)); err != nil {
 				return err
 			}
 			if snap.Err != nil {

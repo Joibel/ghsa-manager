@@ -42,6 +42,8 @@ type Deps struct {
 	StatePath string
 	Refresh   time.Duration
 	MaxRuns   int
+	// Supported is how many supported release branches the checklist expects.
+	Supported int
 }
 
 // Model is the screen's state.

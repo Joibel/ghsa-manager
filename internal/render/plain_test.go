@@ -40,14 +40,15 @@ func snapshot() source.Snapshot {
 
 func TestPlain(t *testing.T) {
 	var buf bytes.Buffer
-	require.NoError(t, Plain(&buf, snapshot(), []string{"GHSA-dddd-eeee-ffff"}))
-	want := ` Q  GHSA                 STATE          BRANCH       PR   AUTHOR          CI                             REVIEWS
- ·  GHSA-aaaa-bbbb-cccc  needs CI       fork ✓
-                                        main         #1   mallory-fixer   ✓ green 2h ago                 alice approved (stale)
-                                        release-4.1  #2                   ✗ red 1h ago (skipped: E2E UI (root)) ✗ bob changes requested
- 1  GHSA-dddd-eeee-ffff  ready          fork ✓  Token leak via redirect
-                                        main         #1                   ✓ green 2h ago                 ✓ carol approved
- ·  GHSA-gggg-hhhh-iiii  no fork
+	snap := snapshot()
+	require.NoError(t, Plain(&buf, snap, []string{"GHSA-dddd-eeee-ffff"}, Checklists(snap, nil, 2)))
+	want := ` Q  GHSA                 STATE          REL  BRANCH       PR   AUTHOR          CI                             REVIEWS
+ ·  GHSA-aaaa-bbbb-cccc  needs CI       0/6  fork ✓
+                                             main         #1   mallory-fixer   ✓ green 2h ago                 alice approved (stale)
+                                             release-4.1  #2                   ✗ red 1h ago (skipped: E2E UI (root)) ✗ bob changes requested
+ 1  GHSA-dddd-eeee-ffff  checklist 0/6  0/6  fork ✓  Token leak via redirect
+                                             main         #1                   ✓ green 2h ago                 ✓ carol approved
+ ·  GHSA-gggg-hhhh-iiii  no fork        0/6
 `
 	assert.Equal(t, want, buf.String())
 }
@@ -60,4 +61,17 @@ func TestCIText(t *testing.T) {
 	assert.Equal(t, "? unconfirmed 3d ago (base moved)", CIText(model.FixPR{HeadSHA: h1, CI: model.CI{
 		State: model.CIUnconfirmed, RunHeadSHA: h1, FinishedAt: now.Add(-72 * time.Hour), MergedBaseSHA: "aaa1111", CurrentBaseSHA: "bbb2222",
 	}}, now))
+}
+
+func TestPlainChecklist(t *testing.T) {
+	snap := snapshot()
+	snap.Advisories[1].CVEID = "CVE-2026-1"
+	snap.Advisories[0].CVEID = "CVE-2026-2"
+	var buf bytes.Buffer
+	require.NoError(t, Plain(&buf, snap, nil, Checklists(snap, nil, 2)))
+	out := buf.String()
+	assert.Contains(t, out, "checklist 1/6")
+	assert.Contains(t, out, "needs CI")
+	assert.Regexp(t, `GHSA-aaaa-bbbb-cccc  needs CI +1/6`, out)
+	assert.Regexp(t, `GHSA-dddd-eeee-ffff  checklist 1/6 +1/6`, out)
 }

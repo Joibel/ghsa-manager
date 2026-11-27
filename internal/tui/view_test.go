@@ -27,6 +27,8 @@ func TestView_LayoutA(t *testing.T) {
 		"running 1/3",
 		"#1   mallory-fixer",
 		"AUTHOR",
+		"REL",
+		"0/6",
 	} {
 		assert.Contains(t, v, want)
 	}

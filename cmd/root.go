@@ -48,7 +48,7 @@ The upstream and mirror repositories come from the config file
 			if err != nil {
 				return err
 			}
-			p := tea.NewProgram(tui.New(deps(client, repos, maxRuns, refresh)), tea.WithAltScreen(), tea.WithContext(c.Context()))
+			p := tea.NewProgram(tui.New(deps(client, repos, cfg.SupportedBranches, maxRuns, refresh)), tea.WithAltScreen(), tea.WithContext(c.Context()))
 			if _, err := p.Run(); err != nil {
 				return fmt.Errorf("running the TUI: %w", err)
 			}
@@ -75,7 +75,7 @@ func newClient(ctx context.Context) (*github.Client, error) {
 	return client, nil
 }
 
-func deps(c *github.Client, repos gh.Repos, maxRuns int, refresh time.Duration) tui.Deps {
+func deps(c *github.Client, repos gh.Repos, supported, maxRuns int, refresh time.Duration) tui.Deps {
 	facts := mirror.NewFacts(c, nil, repos.Mirror)
 	src := source.New(c, facts, repos)
 	run := runner.Runner{Script: runner.FromMirror(c, repos.Mirror)}
@@ -106,6 +106,7 @@ func deps(c *github.Client, repos gh.Repos, maxRuns int, refresh time.Duration) 
 		},
 		StatePath: state.Path(repos.Upstream.String()),
 		MaxRuns:   maxRuns,
+		Supported: supported,
 		Refresh:   refresh,
 	}
 }
