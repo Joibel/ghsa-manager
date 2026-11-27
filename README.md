@@ -29,6 +29,19 @@ Tell it which repositories to use, in `~/.config/ghsa-manager/config.json`:
 or with `--upstream` and `--mirror`. The mirror must provide `ghsa-ci.sh` with
 `--json` support on its `mirror-sync` branch.
 
+Two optional keys:
+
+- `checkout`: the local clone of the security checkout, where a per-advisory
+  Claude session runs. A leading `~/` is your home directory. Default:
+  `~/sources/<repo name>-security`.
+- `supported_branches`: how many of the upstream's newest release branches
+  are supported (at least 1). Default: 2.
+
+```json
+{"upstream": "owner/repo", "mirror": "owner/repo-private-mirror",
+ "checkout": "~/sources/repo-security", "supported_branches": 2}
+```
+
 ## Use
 
 ```

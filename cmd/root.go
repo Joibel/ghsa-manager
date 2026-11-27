@@ -39,10 +39,11 @@ The upstream and mirror repositories come from the config file
 ($XDG_CONFIG_HOME/ghsa-manager/config.json) or --upstream and --mirror.`,
 		SilenceUsage: true,
 		RunE: func(c *cobra.Command, _ []string) error {
-			repos, err := config.Load(config.Path(), upstream, mirrorRepo)
+			cfg, err := config.Load(config.Path(), upstream, mirrorRepo)
 			if err != nil {
 				return err
 			}
+			repos := cfg.Repos
 			client, err := newClient(c.Context())
 			if err != nil {
 				return err

@@ -20,10 +20,11 @@ func NewStatusCmd(upstream, mirrorRepo *string) *cobra.Command {
 		Use:   "status",
 		Short: "Print every draft advisory's fork, fix PRs, CI and reviews",
 		RunE: func(c *cobra.Command, _ []string) error {
-			repos, err := config.Load(config.Path(), *upstream, *mirrorRepo)
+			cfg, err := config.Load(config.Path(), *upstream, *mirrorRepo)
 			if err != nil {
 				return err
 			}
+			repos := cfg.Repos
 			client, err := newClient(c.Context())
 			if err != nil {
 				return err
